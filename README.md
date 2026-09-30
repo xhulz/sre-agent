@@ -53,9 +53,9 @@ Open http://localhost:3000 (the responder's page) and http://localhost:8233 (Tem
 
 While it runs: **[w]** crashes or restarts the worker, **[t]** stops or restarts Temporal, **[q]** (or Ctrl-C) stops everything.
 
-### 5. Trigger an incident
+### 5. Try it
 
-On the page, pick `acme · checkout-api error spike ~10 minutes after a deploy` and click **Trigger incident**. The context brief appears in about a second, Claude's proposal in 10 to 20 seconds. Click **Approve**. 15 seconds later the runtime checks the error rate and resolves the incident. The other scenarios are in [Use cases](#use-cases-how-to-test-it-and-what-each-one-shows).
+Follow the [use cases](#use-cases-how-to-test-it-and-what-each-one-shows) below, starting with use case 1.
 
 ### Other commands
 
