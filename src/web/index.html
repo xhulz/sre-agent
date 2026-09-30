@@ -27,6 +27,7 @@
   button { cursor: pointer; } button:disabled { opacity: .5; cursor: default; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button.approve { background: var(--ok); border-color: var(--ok); color: #fff; }
+  button.approve.blocked { background: var(--muted); border-color: var(--muted); }
   button.reject { border-color: var(--bad); color: var(--bad); }
   main { display: grid; grid-template-columns: 240px 1fr; min-height: calc(100vh - 58px); }
   aside { border-right: 1px solid var(--line); padding: 12px; }
@@ -340,7 +341,13 @@
     return `<div class="panel banner"><strong>Degraded:</strong> ${esc(s.degradedReason)}. <span class="muted">No hypotheses from the model. The evidence gathered so far is still valid; the responder drives from here.</span>${retry}</div>`;
   }
 
-  /** The proposal card, with Approve/Reject while it waits. */
+  /**
+   * The proposal card, with Approve/Reject while it waits.
+   *
+   * With the kill switch on, Approve stays clickable on purpose: the switch is enforced by the
+   * server right before the action runs (this page could be stale, or another surface could
+   * approve). The button only says, in grey, that the action won't run.
+   */
   function renderProposal({ p, act, waiting, actOff }) {
     if (!p) return '';
     const step = act
@@ -348,7 +355,7 @@
       : esc(p.nextStep.kind);
     const warning = waiting && actOff ? '<p class="muted">⛔ The kill switch is on: approving will not run this action.</p>' : '';
     const buttons = waiting
-      ? `<div class="row"><button class="approve" data-do="approve">${act ? 'Approve and run' : 'Done, re-check'}</button><button class="reject" data-do="reject">Reject…</button></div>`
+      ? `<div class="row">${approveButton(act, actOff)}<button class="reject" data-do="reject">Reject…</button></div>`
       : '';
     return `<div class="panel proposal">
       <h2>Proposal <span class="muted" style="font-weight:400">${esc(p.id.slice(0, 8))}</span></h2>
@@ -359,6 +366,13 @@
       <p><strong>${step}</strong> — ${esc(p.nextStep.rationale)}</p>
       ${warning}${buttons}
     </div>`;
+  }
+
+  /** The Approve button: "Done, re-check" for a suggestion, grey when the kill switch blocks the action. */
+  function approveButton(act, actOff) {
+    if (!act) return '<button class="approve" data-do="approve">Done, re-check</button>';
+    if (actOff) return `<button class="approve blocked" data-do="approve">Approve (kill switch on: won't run)</button>`;
+    return '<button class="approve" data-do="approve">Approve and run</button>';
   }
 
   /** Demo controls (manual rollback, kill switch) and "Mark resolved", while the incident is open. */
