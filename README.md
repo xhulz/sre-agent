@@ -6,7 +6,7 @@ A human approves or rejects it. The runtime executes the approved action, checks
 What is real: **Claude** (API), **MCP** (a real MCP server over stdio), **Temporal** (durable state), **human approval** (a small web page).
 What is fake: the customer's infrastructure ("the world": metrics, logs, deploys) and PagerDuty's own directory. The fake world reacts to actions: roll back the bad version and the error rate drops.
 
-The areas I show in code: **State** and **Actions & Safety**, plus a small **Memory** (verified fixes only).
+The areas I show in code: **State** and **Actions & Safety**. Also in code, smaller: **Memory** (verified fixes only) and the core of **Multiplayer**.
 
 ---
 
@@ -70,7 +70,7 @@ Nothing to download or seed: `data/` (Temporal's database, the fake world, the a
 
 You can also start the three parts in separate terminals: `npm run temporal`, `npm run worker`, `npm run web` (these read the shell environment, not `.env`).
 
-Settings (all optional, in `.env`): `ANTHROPIC_MODEL` (default `claude-opus-5-5`), `AGENT_EFFORT` (default `medium`), `APPROVAL_TIMEOUT` (default `5 minutes`), `VERIFY_DELAY` (default `15 seconds`), `LLM_CONCURRENCY` (default `4`), `WEB_PORT` (default `3000`), `TEMPORAL_LOG_LEVEL` (default `WARN`). The model and effort are pinned into each incident when it starts.
+Settings (all optional, in `.env`): `ANTHROPIC_MODEL` (default `claude-opus-5-5`), `AGENT_EFFORT` (default `medium`), `APPROVAL_TIMEOUT` (default `5 minutes`), `VERIFY_DELAY` (default `15 seconds`), `LLM_CONCURRENCY` (default `4`), `WEB_PORT` (default `3000`), `TEMPORAL_ADDRESS` (default `localhost:7233`), `TEMPORAL_LOG_LEVEL` (default `WARN`). The model and effort are pinned into each incident when it starts.
 
 ### Troubleshooting
 
@@ -160,7 +160,7 @@ Not a click here: scale ([Where I think it breaks first](#where-i-think-it-break
 ### 10. The eval
 
 - **Try:** with `npm run dev` running and a key: `npm run eval` (about $0.20 per run), or `npm run eval -- --runs 3`.
-- **Look at:** one row per scenario: pass, what it proposed, cited evidence, confidence, policy blocks, LLM calls, seconds to the brief and to the proposal, cost. `ANTHROPIC_MODEL=<candidate> npm run eval` measures another model on the same scenarios.
+- **Look at:** one row per scenario and run: pass, what it proposed, cited evidence, confidence, policy blocks, LLM calls, seconds to the brief and to the proposal, cost. `ANTHROPIC_MODEL=<candidate> npm run eval` measures another model on the same scenarios.
 - **What it shows:** how to evaluate a judgement call. Grade what must be true (action, target, real evidence, no action when acting is wrong), and gate a prompt or model change on quality, latency and cost together.
 
 ---
@@ -200,7 +200,7 @@ The responder gets useful facts in about a second, whatever the model does. The 
 _Trade-off:_ the fixed first pass sometimes fetches things the model does not need.
 
 **3. First-party vs third-party data.**
-PagerDuty's own data (ownership, on-call, past incidents) is read directly. The customer's stack is only reached through MCP, as the brief says. Each tenant gets its own MCP connection, and the tenant id is part of the connection. The model never chooses a tenant.
+PagerDuty's own data (ownership, on-call, past incidents) is read directly. The customer's stack is only reached through MCP, as the exercise says. Each tenant gets its own MCP connection, and the tenant id is part of the connection. The model never chooses a tenant.
 Third-party data is treated as **data, never instructions** (use case 5).
 _Trade-off:_ one MCP process per tenant isolates well but costs a process per active tenant, and the pool doesn't close idle ones yet.
 
@@ -240,8 +240,8 @@ _Trade-off:_ memory only learns from what the agent itself fixed. Human postmort
 
 ## Assumptions
 
-- One responder, one surface, one agent (as the brief says).
-- The brief mentions _"the region-outage burst above"_, but it is not in my copy of the brief. I assumed: a cloud region fails, and within minutes hundreds of alerts create many incidents across many tenants.
+- One responder, one surface, one agent (as the exercise says).
+- The exercise mentions _"the region-outage burst above"_, but it is not in my copy of it. I assumed: a cloud region fails, and within minutes hundreds of alerts create many incidents across many tenants.
 - Third-party data only through MCP. PagerDuty's own data is first-party.
 - An incident can resolve automatically when the verification shows recovery. The human can always resolve it by hand.
 - Escalation to the secondary on-call is simulated (a timeline entry).
