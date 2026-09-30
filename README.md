@@ -247,10 +247,10 @@ _Trade-off:_ memory only learns from what the agent itself fixed. Human postmort
 
 ## What I left out, and why
 
-- **Multiplayer.** Out of scope for this exercise. The base is there: the workflow is the single writer, signals from any surface are applied one at a time, and proposal ids make stale decisions harmless. Missing: who is allowed to approve (RBAC), presence, and showing conflicts to people.
-- **Memory at scale.** Retrieval is keyword-based (same service, shared words, most recent first). At scale it needs embeddings and weighting by how often a fix worked, always filtered by tenant first. Also missing: forgetting (a fix that stopped working should lose weight) and human postmortems as a second source.
-- **Multiple languages.** Everything is English. I would keep tools and evidence language-neutral, answer in the responder's language, and run the evals per language.
-- **Real integrations, auth, tenant admin, streaming UI.** Polling is enough for one responder.
+- **Multiplayer, partly.** The exercise assumes one responder on one surface, but the core is in the code. The workflow is the single writer and the single picture: every surface reads the same query and sends the same signal. Decisions are applied one at a time and carry the proposal id, so two clicks can't race, and a late click on an old proposal is ignored and logged. An action refuses to run if someone changed the service by hand (use case 3). Missing: who may approve (RBAC); presence; several agents (each conclusion would be a proposal on the same incident, side by side, and a person decides, never a vote between models); and one action per service at a time (the rollback has its precondition, the restart has none).
+- **Memory at scale.** Retrieval is keyword-based (same service, shared words, most recent first). At scale: hybrid search (keywords plus embeddings), always filtered by tenant first, a reranker on top, and more weight for fixes that worked more often. Also missing: forgetting (a fix that stopped working should lose weight) and human postmortems as a second source.
+- **Multiple languages.** Everything is English. The safety part doesn't depend on language: the policy checks structured fields (action ids, evidence ids, enums), not text. I would answer in the responder's language, keep the evidence in its original language, cited by id, and run the evals per language.
+- **Real integrations, auth, tenant admin, streaming UI.** The responder's name is fixed ("Responder PD"); with a login it would be the signed-in user. Polling is enough for one responder.
 - **Growing the integration ecosystem.** Adding a data source = registering another MCP server for the tenant. Its read tools reach the model once we add them to the read-only allowlist (after review: the server's own read-only hints are not trusted). Actions are different: they are only added to the catalog by us, never discovered from a server.
 
 ## Where I think it breaks first
