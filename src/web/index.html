@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SRE Agent</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1b1f24; --muted: #5f6b7a; --line: #e2e6eb;
+    --accent: #0b6bcb; --ok: #1a7f37; --warn: #b35900; --bad: #c62828; --busy: #6b4fbb;
+    --chip: #eef3fa; --code: #f2f4f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216; --panel: #171b21; --text: #e6e9ee; --muted: #93a0b0; --line: #262c35;
+      --accent: #5aa7ff; --ok: #4cc26b; --warn: #f0a24a; --bad: #ff6b6b; --busy: #a58cff;
+      --chip: #1f2a38; --code: #11151a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  h1 { font-size: 16px; margin: 0; } h1 span { color: var(--muted); font-weight: 400; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  input, select, button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+  button { cursor: pointer; } button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.approve { background: var(--ok); border-color: var(--ok); color: #fff; }
+  button.reject { border-color: var(--bad); color: var(--bad); }
+  main { display: grid; grid-template-columns: 240px 1fr; min-height: calc(100vh - 58px); }
+  aside { border-right: 1px solid var(--line); padding: 12px; }
+  aside a { display: block; padding: 8px; border-radius: 6px; color: inherit; text-decoration: none; margin-bottom: 4px; }
+  aside a.sel { background: var(--chip); }
+  aside small { color: var(--muted); display: block; }
+  #detail { padding: 16px; min-width: 0; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .muted { color: var(--muted); }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; color: #fff; background: var(--muted); }
+  .s-investigating, .s-gathering_context { background: var(--accent); }
+  .s-awaiting_approval { background: var(--warn); }
+  .s-executing, .s-verifying { background: var(--busy); }
+  .s-degraded { background: var(--bad); } .s-resolved { background: var(--ok); }
+  .banner { border-left: 4px solid var(--bad); }
+  .working { position: sticky; top: 0; z-index: 1; margin-bottom: 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--accent); font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .working.waiting { color: var(--warn); animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+  .working.offline { color: var(--bad); }
+  .proposal { border-left: 4px solid var(--warn); }
+  .chip { display: inline-block; font-size: 12px; padding: 0 6px; margin: 0 2px; border-radius: 4px; background: var(--chip); color: var(--accent); text-decoration: none; }
+  .cols { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; align-items: start; }
+  ol.timeline { list-style: none; padding: 0; margin: 0; }
+  ol.timeline li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  ol.timeline .who { font-size: 12px; color: var(--muted); }
+  .k-thinking .txt { color: var(--muted); font-style: italic; }
+  .k-policy .txt, .k-action .txt, .k-memory .txt { font-weight: 600; }
+  details { border-bottom: 1px solid var(--line); padding: 6px 0; }
+  summary { cursor: pointer; }
+  pre { white-space: pre-wrap; word-break: break-word; background: var(--code); padding: 8px; border-radius: 6px; margin: 6px 0 0; font-size: 12px; }
+  h2 { font-size: 15px; margin: 0 0 8px; } h3 { font-size: 13px; margin: 12px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  ul.hyp { margin: 0; padding-left: 18px; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid var(--line); } .cols { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>SRE Agent <span>— one responder, one agent</span></h1>
+  <div class="controls">
+    <label class="muted">Responder <input id="who" size="10"></label>
+    <select id="scenario"></select>
+    <button id="trigger" class="primary">Trigger incident</button>
+  </div>
+</header>
+<main>
+  <aside id="list"></aside>
+  <section id="detail">
+    <div id="working" class="working" hidden></div>
+    <div id="body"><p class="muted">Pick a scenario and trigger an incident.</p></div>
+  </section>
+</main>
+<script>
+  /**
+   * The responder's page. Plain JS, no build step.
+   *
+   * It polls the web server every 1.5s (query) and sends decisions (signal). Everything shown comes
+   * from the workflow's state, except the "working" line, which is animated locally so the page
+   * never looks frozen. Reload it at any time: the only local state is in `page`, below.
+   *
+   * Same conventions as the TypeScript: constants first, `main()` wires everything, functions
+   * follow in the order they are used, and the only top-level call is `main()` at the end.
+   */
+
+  /** List prices, USD per million tokens, by model (estimate only, shown next to token counts). */
+  const PRICES = { 'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2 } };
+  /** Spinner frames for the working line. */
+  const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+  /** Rotating verbs while the model investigates. */
+  const VERBS = ['Thinking', 'Investigating', 'Correlating signals', 'Weighing hypotheses', 'Checking evidence'];
+
+  /** All the page's local state, in one place. */
+  const page = {
+    /** Selected incident (workflow id), kept in the URL hash so a reload keeps it. */
+    selected: decodeURIComponent(location.hash.slice(1)) || null,
+    /** Last known state of the selected incident. Kept on screen if the backend goes away. */
+    state: null,
+    /** Last connection error, or null when the backend answers. */
+    offline: null,
+    /** Animation counter (one tick every 120ms). */
+    tick: 0,
+    /** Evidence items the user opened, so they stay open across re-renders. */
+    openEvidence: new Set(),
+    /** Manual rollbacks done from this page (workflowId → version), so the button shows it. */
+    manualRollbacks: new Map(),
+  };
+
+  /** Wires the controls, loads once, then polls (1.5s), animates (120ms) and refreshes the list (5s). */
+  function main() {
+    $('#who').value = who();
+    $('#who').addEventListener('change', (e) => saveWho(e.target.value));
+    $('#trigger').addEventListener('click', onTrigger);
+    $('#detail').addEventListener('click', onDetailClick);
+    $('#detail').addEventListener('toggle', onEvidenceToggle, true);
+    window.addEventListener('hashchange', onHashChange);
+    loadScenarios();
+    loadList();
+    refresh();
+    setInterval(refresh, 1500);
+    setInterval(updateWorking, 120);
+    setInterval(loadList, 5000);
+  }
+
+  // ---- Events ----
+
+  /** Starts an incident (in production: a consumer of PagerDuty's incident.triggered event). */
+  async function onTrigger() {
+    $('#trigger').disabled = true;
+    try {
+      const { workflowId } = await api('POST', '/api/incidents', { scenario: $('#scenario').value });
+      location.hash = encodeURIComponent(workflowId);
+    } catch (err) {
+      alert(err.message);
+    }
+    $('#trigger').disabled = false;
+  }
+
+  /**
+   * One click handler for the whole detail area: evidence chips, decisions, demo controls, kill
+   * switch. The button stays disabled while its request runs.
+   */
+  async function onDetailClick(e) {
+    const chip = e.target.closest('[data-ev]');
+    if (chip) return openChip(e, chip);
+    const btn = e.target.closest('button[data-do]');
+    if (!btn || !page.state) return;
+    btn.disabled = true;
+    try {
+      const sent = await runButton(btn.dataset.do);
+      if (sent) setTimeout(refresh, 300);
+      else btn.disabled = false;
+    } catch (err) {
+      alert(err.message);
+      btn.disabled = false;
+    }
+  }
+
+  /** Remembers which evidence items are open (the area is re-rendered on every poll). */
+  function onEvidenceToggle(e) {
+    const id = e.target.id?.replace('ev-', '');
+    if (!id) return;
+    if (e.target.open) page.openEvidence.add(id);
+    else page.openEvidence.delete(id);
+  }
+
+  /** Selecting another incident: forget what belonged to the previous one. */
+  function onHashChange() {
+    page.selected = decodeURIComponent(location.hash.slice(1)) || null;
+    page.state = null;
+    page.offline = null;
+    page.openEvidence.clear();
+    loadList();
+    refresh();
+  }
+
+  /** Evidence chip: opens that evidence item on the right (the hash holds the incident, so no navigation). */
+  function openChip(e, chip) {
+    e.preventDefault();
+    page.openEvidence.add(chip.dataset.ev);
+    const details = document.getElementById(`ev-${chip.dataset.ev}`);
+    if (!details) return;
+    details.open = true;
+    details.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  /**
+   * Runs what a button asks for.
+   *
+   * @returns false if nothing was sent (the user cancelled).
+   */
+  async function runButton(action) {
+    if (action === 'manual-rollback') return manualRollback();
+    if (action === 'kill-switch') return toggleKillSwitch();
+    return sendDecision(action);
+  }
+
+  /** Demo control: someone fixes it by hand while the agent waits. */
+  async function manualRollback() {
+    const { tenantId, service } = page.state.incident;
+    const r = await api('POST', `/api/world/${tenantId}/manual-rollback`, { service, by: who() });
+    page.manualRollbacks.set(page.selected, r.version);
+    render();
+    return true;
+  }
+
+  /** Turns the tenant's kill switch on or off. */
+  async function toggleKillSwitch() {
+    const tenant = page.state.incident.tenantId;
+    const on = !page.state.killSwitch?.tenants.includes(tenant);
+    await api('POST', '/api/kill-switch', { tenant, on });
+    return true;
+  }
+
+  /**
+   * Sends a decision. It carries the proposal id: the workflow ignores a decision for an older
+   * proposal. A rejection asks why (the agent reads it); Cancel sends nothing.
+   */
+  async function sendDecision(kind) {
+    let reason;
+    if (kind === 'reject') {
+      reason = prompt('Why? The agent reads this.');
+      if (reason === null) return false;
+    }
+    const proposalId = page.state.proposal?.id ?? null;
+    await api('POST', `/api/incidents/${encodeURIComponent(page.selected)}/decision`, { proposalId, kind, by: who(), reason });
+    return true;
+  }
+
+  // ---- Data ----
+
+  /**
+   * Polls the selected incident. On failure it keeps the last screen and sets `offline`, which turns
+   * the working line red, instead of replacing the page with an error.
+   */
+  async function refresh() {
+    if (!page.selected) return;
+    try {
+      page.state = await api('GET', `/api/incidents/${encodeURIComponent(page.selected)}`);
+      page.offline = null;
+      render();
+    } catch (e) {
+      page.offline = e.message;
+      if (!page.state) $('#body').innerHTML = `<p class="muted">${esc(e.message)}</p>`;
+    }
+  }
+
+  /** Fills the scenario dropdown. */
+  async function loadScenarios() {
+    const list = await api('GET', '/api/scenarios');
+    $('#scenario').innerHTML = list.map((s) => `<option value="${esc(s.id)}">${esc(s.tenantId)} · ${esc(s.description)}</option>`).join('');
+  }
+
+  /** Refreshes the incident list on the left. */
+  async function loadList() {
+    const items = await api('GET', '/api/incidents').catch(() => []);
+    $('#list').innerHTML = items.length
+      ? items.map((i) => `<a href="#${esc(encodeURIComponent(i.workflowId))}" class="${i.workflowId === page.selected ? 'sel' : ''}">${esc(i.workflowId)}<small>${esc(i.status.toLowerCase())} · ${time(i.startTime)}</small></a>`).join('')
+      : '<p class="muted">No incidents yet.</p>';
+  }
+
+  /** Calls the web server; throws with the server's error message on failure. */
+  async function api(method, path, body) {
+    const res = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+
+  // ---- Rendering: a pure function of `page.state`, redrawn on every poll ----
+
+  /** Draws the selected incident, one section after the other. */
+  function render() {
+    if (!page.state) return;
+    const v = viewOf(page.state);
+    $('#body').innerHTML = [
+      renderHeader(v),
+      renderKillSwitchBanner(v),
+      renderDegradedBanner(v),
+      renderProposal(v),
+      renderControls(v),
+      renderColumns(v),
+    ].join('');
+  }
+
+  /** What the sections need, worked out once. */
+  function viewOf(s) {
+    const p = s.proposal;
+    const act = p?.nextStep.action ?? null;
+    // `null` = the switch file is unreadable: the runtime blocks everything (fail closed).
+    const ks = s.killSwitch;
+    const tenantOff = !ks || ks.tenants.includes(s.incident.tenantId);
+    return {
+      s,
+      i: s.incident,
+      p,
+      act,
+      ks,
+      tenantOff,
+      actOff: !!act && (tenantOff || ks.actions.includes(act.actionId)),
+      waiting: s.status === 'awaiting_approval' && !!p,
+      open: s.workflowStatus === 'RUNNING',
+    };
+  }
+
+  /** Title, status, ids, token usage and cost, and the link to the Temporal history. */
+  function renderHeader({ s, i }) {
+    return `<div class="panel">
+      <div class="row"><h2 style="margin:0">${esc(i.title)}</h2><span class="pill s-${esc(s.status)}">${esc(s.status.replace('_', ' '))}</span></div>
+      <div class="muted">${esc(i.id)} · tenant ${esc(i.tenantId)} · ${esc(i.service)} · ${esc(i.severity)} · round ${s.round}
+        · ${s.agent ? `${esc(s.agent.model)} (effort ${esc(s.agent.effort)}) · ` : ''}${s.usage.llmCalls} LLM calls · ${s.usage.inputTokens + s.usage.cacheReadTokens} in / ${s.usage.outputTokens} out tokens · ~$${cost(s)}
+        · <a href="http://localhost:8233/namespaces/default/workflows/${encodeURIComponent(page.selected)}" target="_blank" rel="noopener">Temporal history ↗</a></div>
+    </div>`;
+  }
+
+  /** Red banner while the tenant's kill switch is on. */
+  function renderKillSwitchBanner({ open, tenantOff, ks, i }) {
+    if (!open || !tenantOff) return '';
+    const which = ks ? `for tenant ${esc(i.tenantId)}` : '(the switch file is unreadable)';
+    return `<div class="panel banner"><strong>Kill switch on</strong> ${which}. <span class="muted">The agent keeps investigating and proposing, but no action will run.</span></div>`;
+  }
+
+  /** Red banner when the agent degraded, with "Try the agent again" while the incident is open. */
+  function renderDegradedBanner({ s, open }) {
+    if (s.status !== 'degraded') return '';
+    const retry = open ? '<div class="row" style="margin-top:8px"><button class="primary" data-do="retry" title="Use this when the model is available again">Try the agent again</button></div>' : '';
+    return `<div class="panel banner"><strong>Degraded:</strong> ${esc(s.degradedReason)}. <span class="muted">No hypotheses from the model. The evidence gathered so far is still valid; the responder drives from here.</span>${retry}</div>`;
+  }
+
+  /** The proposal card, with Approve/Reject while it waits. */
+  function renderProposal({ p, act, waiting, actOff }) {
+    if (!p) return '';
+    const step = act
+      ? `${esc(act.actionId)} on ${esc(act.service)}${act.fromVersion ? ` (${esc(act.fromVersion)} → ${esc(act.toVersion)})` : ''}`
+      : esc(p.nextStep.kind);
+    const warning = waiting && actOff ? '<p class="muted">⛔ The kill switch is on: approving will not run this action.</p>' : '';
+    const buttons = waiting
+      ? `<div class="row"><button class="approve" data-do="approve">${act ? 'Approve and run' : 'Done, re-check'}</button><button class="reject" data-do="reject">Reject…</button></div>`
+      : '';
+    return `<div class="panel proposal">
+      <h2>Proposal <span class="muted" style="font-weight:400">${esc(p.id.slice(0, 8))}</span></h2>
+      <p>${esc(p.summary)}</p>
+      <h3>Hypotheses</h3>
+      <ul class="hyp">${p.hypotheses.map((h) => `<li>${esc(h.cause)} <span class="muted">(${esc(h.confidence)})</span> ${chips(h.evidenceIds)}</li>`).join('')}</ul>
+      <h3>Next step</h3>
+      <p><strong>${step}</strong> — ${esc(p.nextStep.rationale)}</p>
+      ${warning}${buttons}
+    </div>`;
+  }
+
+  /** Demo controls (manual rollback, kill switch) and "Mark resolved", while the incident is open. */
+  function renderControls({ open, i, tenantOff }) {
+    if (!open) return '';
+    let manual = '';
+    if (i.tenantId === 'acme') {
+      manual = page.manualRollbacks.has(page.selected)
+        ? `<button disabled>Rolled back by hand to ${esc(page.manualRollbacks.get(page.selected))} ✓ <span class="muted">(the agent does not know yet)</span></button>`
+        : '<button data-do="manual-rollback" title="Demo: someone fixes it by hand while the agent waits">Simulate manual rollback</button>';
+    }
+    const killSwitch = tenantOff ? `Turn the kill switch off (${esc(i.tenantId)})` : `Kill switch: stop agent actions for ${esc(i.tenantId)}`;
+    return `<div class="row" style="margin-bottom:14px">
+      ${manual}
+      <button data-do="kill-switch" title="Containment: stop every agent action for this tenant, at once">${killSwitch}</button>
+      <button data-do="resolve">Mark resolved</button>
+    </div>`;
+  }
+
+  /** Timeline (newest first) on the left, evidence on the right. */
+  function renderColumns({ s }) {
+    const timeline = s.timeline.slice().reverse().map((t) => `
+      <li class="k-${esc(t.kind)}"><div class="who">${time(t.at)} · ${esc(t.actor)} · ${esc(t.kind)}</div><div class="txt">${esc(t.text)} ${chips(t.evidenceIds)}</div></li>`).join('');
+    const evidence = s.evidence.map((e) => `
+      <details id="ev-${esc(e.id)}" ${page.openEvidence.has(e.id) ? 'open' : ''}><summary><strong>${esc(e.id)}</strong> ${esc(e.label)} <span class="muted">(${esc(e.source)}${e.ok ? '' : ', unavailable'})</span></summary><pre>${esc(e.content)}</pre></details>`).join('');
+    return `<div class="cols">
+      <div class="panel"><h2>Timeline</h2><ol class="timeline">${timeline}</ol></div>
+      <div class="panel"><h2>Evidence</h2>${evidence}</div>
+    </div>`;
+  }
+
+  // ---- The working line: shows the agent is alive and what it is doing ----
+
+  /**
+   * Updates the working line from the current status. It lives outside the re-rendered area, so the
+   * animation stays smooth. No elapsed time on purpose: it could be confused with Temporal timers.
+   */
+  function updateWorking() {
+    const el = $('#working');
+    page.tick++;
+    if (page.offline && page.state) {
+      el.hidden = false;
+      el.className = 'working offline';
+      el.title = page.offline;
+      el.textContent = `⚠ Can't reach the agent right now (Temporal or the worker is down). The incident state is safe. Reconnecting${dots()}`;
+      return;
+    }
+    const { label, waiting } = workingLabel(page.state);
+    el.hidden = !label;
+    if (!label) return;
+    el.className = `working${waiting ? ' waiting' : ''}`;
+    el.title = '';
+    el.textContent = waiting ? `⏸ ${label}` : `${SPIN[page.tick % SPIN.length]} ${label}${dots()}`;
+  }
+
+  /** What the working line says for a status (nothing once the incident is closed). */
+  function workingLabel(s) {
+    const status = s && s.workflowStatus === 'RUNNING' ? s.status : null;
+    switch (status) {
+      case 'gathering_context': return { label: 'Gathering context', waiting: false };
+      case 'investigating': return { label: VERBS[Math.floor(page.tick / 25) % VERBS.length], waiting: false };
+      case 'executing': return { label: `Running ${s.proposal?.nextStep.action?.actionId ?? 'the action'}`, waiting: false };
+      case 'verifying': return { label: 'Verifying recovery', waiting: false };
+      case 'awaiting_approval': return { label: 'Waiting for a human decision', waiting: true };
+      default: return { label: null, waiting: false };
+    }
+  }
+
+  // ---- Helpers ----
+
+  /** Short `querySelector`. */
+  function $(selector) {
+    return document.querySelector(selector);
+  }
+
+  /**
+   * Escapes text for HTML. Every value from the server goes through this: the data includes a
+   * hostile log line on purpose, and third-party data must never become markup.
+   */
+  function esc(value) {
+    const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(value ?? '').replace(/[&<>"']/g, (c) => entities[c]);
+  }
+
+  /** Evidence ids as clickable chips (clicking opens the evidence on the right). */
+  function chips(ids) {
+    return (ids || []).map((id) => `<a class="chip" href="#ev-${esc(id)}" data-ev="${esc(id)}">${esc(id)}</a>`).join('');
+  }
+
+  /** ISO timestamp as local time. */
+  function time(iso) {
+    return new Date(iso).toLocaleTimeString();
+  }
+
+  /** Animated dots: `.`, `..`, `...`. */
+  function dots() {
+    return '.'.repeat(1 + (Math.floor(page.tick / 4) % 3)).padEnd(3, ' ');
+  }
+
+  /** Estimated cost of an incident, in USD, or `?` for a model without a known price. */
+  function cost(s) {
+    const price = PRICES[s.agent?.model ?? 'claude-opus-5-5'];
+    if (!price) return '?';
+    const u = s.usage;
+    return ((u.inputTokens * price.input + u.outputTokens * price.output + u.cacheReadTokens * price.cacheRead) / 1e6).toFixed(3);
+  }
+
+  /** The responder's name (stored in the browser). It goes with every decision: the audit trail. */
+  function who() {
+    try {
+      return localStorage.getItem('who') || 'responder';
+    } catch {
+      return 'responder';
+    }
+  }
+
+  /** Remembers the responder's name in this browser. */
+  function saveWho(name) {
+    try {
+      localStorage.setItem('who', name);
+    } catch {
+      // Storage blocked (private window): the name is used for this page only.
+    }
+  }
+
+  main();
+</script>
+</body>
+</html>

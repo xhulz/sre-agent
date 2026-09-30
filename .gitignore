@@ -1,0 +1,8 @@
+node_modules/
+data/
+.env
+
+# Not part of the submission
+pdf/
+private/
+.playwright-mcp/

@@ -1,0 +1,40 @@
+{
+  "name": "sre-agent-sketch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A small, runnable sketch of an SRE incident agent: Temporal for durable state, MCP for third-party data, Claude for reasoning, a human for approval.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "dev": "tsx scripts/dev.ts",
+    "temporal": "mkdir -p data && temporal server start-dev --db-filename data/temporal.db",
+    "worker": "tsx src/worker/worker.ts",
+    "web": "tsx src/web/server.ts",
+    "reset": "tsx src/world/reset.ts",
+    "eval": "tsx scripts/eval.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "format": "biome check --write .",
+    "lint": "biome check ."
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.129.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "@temporalio/activity": "1.24.0",
+    "@temporalio/client": "1.24.0",
+    "@temporalio/common": "1.24.0",
+    "@temporalio/worker": "1.24.0",
+    "@temporalio/workflow": "1.24.0",
+    "tsx": "^4.23.15",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@temporalio/testing": "1.24.0",
+    "@types/node": "^20.19.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  }
+}
