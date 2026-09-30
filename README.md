@@ -196,16 +196,17 @@ An incident can last hours, cross a deploy, a crash, or a shift handover. With T
 _Trade-off:_ Temporal is now on the critical path, and workflow code must stay deterministic (changing it while incidents are open needs versioning).
 
 **2. Fixed context first, then a bounded model loop.**
-The responder gets useful facts in about a second, whatever the model does. The first facts are the same every time. The model only decides what to look at _after_ that.
+The responder gets useful facts in about a second, whatever the model does. The first facts are the same every time. The model only decides what to look at _after_ that. The loop has a budget: at most 8 model calls per proposal and 4 proposals per incident; then it hands over to the human.
 _Trade-off:_ the fixed first pass sometimes fetches things the model does not need.
 
 **3. First-party vs third-party data.**
 PagerDuty's own data (ownership, on-call, past incidents) is read directly. The customer's stack is only reached through MCP, as the brief says. Each tenant gets its own MCP connection, and the tenant id is part of the connection. The model never chooses a tenant.
-Third-party data is treated as **data, never instructions** (see the hostile log line).
+Third-party data is treated as **data, never instructions** (use case 5).
+_Trade-off:_ one MCP process per tenant isolates well but costs a process per active tenant, and the pool doesn't close idle ones yet.
 
 **4. The model proposes, code decides, a human approves.**
 
-- A closed catalog of two actions (`rollback_deploy`, `restart_service`). They don't overlap, and their descriptions say so: a rollback changes which code runs without restarting anything (blue/green); a restart gives fresh processes on the same code. So the check after each one says which one worked. The eval found why this matters: when the description didn't say it, the model assumed a rollback restarts the instances, and reasoned from that.
+- A closed catalog of two actions (`rollback_deploy`, `restart_service`). They don't overlap, and their descriptions say so: a rollback changes which code runs without restarting anything (blue/green); a restart gives fresh processes on the same code. So the check after each one says which one worked. Running the scenarios end to end showed why this matters: when the description didn't say it, the model assumed a rollback restarts the instances, and reasoned from that.
 - Action target = the incident's service only (blast radius).
 - The read-only tool allowlist is enforced in the activity, not in the prompt. Hiding a tool from the model is not a control, because the model can write any tool name.
 - The model never has a path to execute anything.
@@ -229,7 +230,7 @@ Only retryable errors are retried (429, 5xx, network), and SDK retries are off s
 
 **9. Backpressure on the model.** Claude calls run on their own task queue with a concurrency cap (`LLM_CONCURRENCY`). In a burst, calls wait in Temporal instead of all hitting the provider at once.
 
-**10. The transcript is append-only.** Frozen system prompt, stable tool order, tool results truncated before they are appended. This keeps prompt caching working and keeps the model's thinking blocks valid.
+**10. The transcript is append-only.** Frozen system prompt, stable tool order, tool results truncated before they are appended, and one model per incident (pinned when it starts). This keeps prompt caching working and keeps the model's thinking blocks valid.
 
 **11. Memory keeps verified outcomes only.**
 What is worth remembering is "this cause, this fix, and the metrics confirmed it worked". The model's reasoning, rejected proposals and incidents closed by hand without verification are not saved: they are noise, and some are wrong. A fix is the whole path: every action that ran, in order, with the check after each. With two causes at once, "rollback (still 8.1%), then restart (recovered)" is the truth; the last step alone would be half the story. The same fix on the same service is one entry with a counter ("worked 3x"), not three copies in the brief. Memory is per tenant, retrieval is filtered by tenant first, and the model is told that past incidents are hints to confirm with fresh data.
