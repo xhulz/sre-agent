@@ -171,6 +171,9 @@ export function recentLogs(world: WorldState, serviceName: string): string[] {
  * Rolls a service back, as a compare-and-swap.
  *
  * @remarks
+ * Blue/green: traffic goes back to the previous version's instances, which were never stopped.
+ * Nothing restarts, so a connection leak stays until a restart (see the catalog).
+ *
  * "Roll back from `fromVersion`": if the service is no longer on that version (someone fixed it
  * by hand while the proposal waited), it refuses with `precondition_failed` and changes nothing.
  * That is how a stale approval becomes harmless. It also refuses a target version that was never

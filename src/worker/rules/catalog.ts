@@ -32,19 +32,24 @@ export interface CatalogEntry {
  * @remarks
  * Prefer the smallest reversible step. Anything bigger (failover, scaling a database) would be
  * added here with its own precondition and verification before the model could ever propose it.
+ *
+ * The two actions don't overlap, and the descriptions say so: a rollback changes which code runs
+ * without restarting anything; a restart gives fresh processes on the same code. So the check
+ * after each one says which one worked. (Found by the eval: when the description didn't say a
+ * rollback doesn't restart, the model assumed it did, and reasoned from that.)
  */
 export const CATALOG: Record<ActionId, CatalogEntry> = {
   rollback_deploy: {
     id: 'rollback_deploy',
     description:
-      'Roll the incident service back to its previous version. from_version = version running now, to_version = the version before it.',
+      "Send the incident service's traffic back to its previous version (blue/green: the previous version's instances are still running). It changes which code runs; it does not restart anything. from_version = version running now, to_version = the version before it.",
     needsVersions: true,
     verify: { metric: 'error_rate', below: 1 },
   },
   restart_service: {
     id: 'restart_service',
     description:
-      'Rolling restart of every instance of the incident service. Releases leaked resources.',
+      'Rolling restart of every instance of the incident service: fresh processes, same code. Releases leaked resources (connections, memory).',
     needsVersions: false,
     verify: { metric: 'error_rate', below: 1 },
   },

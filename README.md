@@ -133,7 +133,7 @@ Third-party data is treated as **data, never instructions** (see the hostile log
 
 **4. The model proposes, code decides, a human approves.**
 
-- A closed catalog of two actions (`rollback_deploy`, `restart_service`).
+- A closed catalog of two actions (`rollback_deploy`, `restart_service`). They don't overlap, and their descriptions say so: a rollback changes which code runs without restarting anything (blue/green); a restart gives fresh processes on the same code. So the check after each one says which one worked. The eval found why this matters: when the description didn't say it, the model assumed a rollback restarts the instances, and reasoned from that.
 - Action target = the incident's service only (blast radius).
 - The read-only tool allowlist is enforced in the activity, not in the prompt. Hiding a tool from the model is not a control, because the model can write any tool name.
 - The model never has a path to execute anything.

@@ -104,7 +104,7 @@ export function buildServer(tenantId: string): McpServer {
     'rollback_deploy',
     {
       description:
-        'Roll a service back to a previous version. Fails if the current version is not from_version.',
+        "Send a service's traffic back to a previous version (no restart). Fails if the current version is not from_version.",
       inputSchema: {
         service: z.string(),
         from_version: z.string(),
@@ -119,7 +119,7 @@ export function buildServer(tenantId: string): McpServer {
   server.registerTool(
     'restart_service',
     {
-      description: 'Rolling restart of every instance of a service.',
+      description: 'Rolling restart of every instance of a service (fresh processes, same code).',
       inputSchema: { service: z.string(), idempotency_key: z.string() },
       annotations: { destructiveHint: true, idempotentHint: true },
     },
