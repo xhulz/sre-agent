@@ -26,6 +26,10 @@ export const config = {
   get temporalAddress(): string {
     return env('TEMPORAL_ADDRESS', 'localhost:7233');
   },
+  /** Where the local Temporal server keeps its state, so incidents survive a restart. */
+  get temporalDbFile(): string {
+    return `${DATA_DIR}temporal.db`;
+  },
   /** Temporal's own log level in the worker. WARN keeps the demo readable. */
   get temporalLogLevel(): LogLevel {
     return env('TEMPORAL_LOG_LEVEL', 'WARN') as LogLevel;

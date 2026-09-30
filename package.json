@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "tsx scripts/dev.ts",
-    "temporal": "mkdir -p data && temporal server start-dev --db-filename data/temporal.db",
+    "temporal": "tsx scripts/temporal.ts",
     "worker": "tsx src/worker/worker.ts",
     "web": "tsx src/web/server.ts",
     "reset": "tsx src/world/reset.ts",

@@ -3,19 +3,20 @@
  * previous one is ready. Loads `.env` if present.
  *
  * @remarks
- * Keys, for the demo: `[w]` crashes or restarts the worker, `[t]` crashes or restarts Temporal,
- * `[q]` quits. A crash here is real: the process gets SIGKILL, with no chance to clean up. That is
- * how the demo shows that incidents survive a worker crash (Temporal replays them) and a Temporal
- * crash (its state is in `data/temporal.db`).
+ * Nothing to install besides Node: Temporal comes from its SDK (`scripts/temporal.ts`).
+ *
+ * Keys, for the demo: `[w]` crashes or restarts the worker, `[t]` stops or restarts Temporal,
+ * `[q]` quits. The worker crash is real: SIGKILL, with no chance to clean up, and Temporal replays
+ * its incidents. Temporal is stopped rather than killed (see {@link toggle}); its state is in
+ * `data/temporal.db`, so open incidents survive.
  *
  * @packageDocumentation
  */
 
-import { type ChildProcess, execFile, spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
+import { Connection } from '@temporalio/client';
 import { config, loadDotEnv } from '../src/shared/config.js';
 
 /** The three processes this script manages. */
@@ -32,19 +33,16 @@ interface Supervisor {
 /** Project root (paths below are relative to it). */
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
-/** How to start each process. Temporal keeps its state on disk, so it survives restarts. */
+/** How to start each process. */
 const COMMANDS: Record<Name, [string, string[]]> = {
-  temporal: [
-    'temporal',
-    ['server', 'start-dev', '--db-filename', 'data/temporal.db', '--log-level', 'warn'],
-  ],
+  temporal: [process.execPath, ['--import', 'tsx', 'scripts/temporal.ts']],
   worker: [process.execPath, ['--import', 'tsx', 'src/worker/worker.ts']],
   web: [process.execPath, ['--import', 'tsx', 'src/web/server.ts']],
 };
 
-/** The line each process prints when it is ready. Temporal is checked with a health call instead. */
-const READY_LINE: Record<Name, string | null> = {
-  temporal: null,
+/** The line each process prints when it is ready. */
+const READY_LINE: Record<Name, string> = {
+  temporal: 'temporal up',
   worker: 'worker up',
   web: 'web up',
 };
@@ -59,7 +57,7 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => void quit(sup));
   process.on('SIGTERM', () => void quit(sup));
   try {
-    say('starting Temporal…');
+    say('starting Temporal… (the first run downloads it once, about 150 MB)');
     await startTemporal(sup);
     say('starting the worker…');
     await start(sup, 'worker');
@@ -74,43 +72,19 @@ async function main(): Promise<void> {
 }
 
 /**
- * Starts Temporal and waits until it is healthy (up to 30s).
- * If one is already running, it is reused and `[t]` won't control it.
+ * Starts Temporal, unless one already answers at `TEMPORAL_ADDRESS`: then it is reused and `[t]`
+ * won't control it.
  *
  * @param sup - The supervisor.
  */
 async function startTemporal(sup: Supervisor): Promise<void> {
-  if (await temporalHealthy()) {
+  if (await temporalRunning()) {
     say(
       `Temporal is already running at ${config.temporalAddress}: using it ([t] will not control it).`,
     );
     return;
   }
-  await requireTemporalCli();
-  mkdirSync(`${ROOT}data`, { recursive: true });
-  // No ready line: this resolves at once. Readiness is the health check below.
-  void start(sup, 'temporal');
-  for (let i = 0; i < 60; i++) {
-    if (await temporalHealthy()) return;
-    if (!sup.running.has('temporal')) throw new Error('Temporal exited while starting (see above)');
-    await sleep(500);
-  }
-  throw new Error('Temporal did not become healthy in 30s');
-}
-
-/**
- * Fails with install instructions when the Temporal CLI is missing (the first thing a new
- * machine hits).
- */
-async function requireTemporalCli(): Promise<void> {
-  try {
-    await promisify(execFile)('temporal', ['--version']);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-    throw new Error(
-      'the Temporal CLI was not found. Install it (macOS: brew install temporal; other systems: https://docs.temporal.io/cli), then run npm run dev again.',
-    );
-  }
+  await start(sup, 'temporal');
 }
 
 /**
@@ -131,7 +105,7 @@ function start(sup: Supervisor, name: Name): Promise<void> {
   const ready = READY_LINE[name];
   return new Promise((resolve, reject) => {
     pipeOutput(name, child, (line) => {
-      if (ready && line.includes(ready)) resolve();
+      if (line.includes(ready)) resolve();
     });
     child.on('error', reject); // it could not start at all
     child.on('exit', (code, signal) => {
@@ -139,7 +113,6 @@ function start(sup: Supervisor, name: Name): Promise<void> {
       if (!sup.quitting) reportExit(name, signal ?? `exit ${code}`);
       reject(new Error(`${name} exited before it was ready`));
     });
-    if (!ready) resolve();
   });
 }
 
@@ -179,7 +152,7 @@ function reportExit(name: Name, how: string): void {
  */
 function listenToKeys(sup: Supervisor): void {
   if (!process.stdin.isTTY) return;
-  say('keys:  [w] crash/restart worker   [t] crash/restart Temporal   [q] quit');
+  say('keys:  [w] crash/restart worker   [t] stop/restart Temporal   [q] quit');
   process.stdin.setRawMode(true);
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (key: string) => {
@@ -190,16 +163,25 @@ function listenToKeys(sup: Supervisor): void {
 }
 
 /**
- * Demo key: crash the process if it runs (SIGKILL, no clean shutdown), start it if it doesn't.
+ * Demo key: stop the process if it runs, start it if it doesn't.
+ *
+ * @remarks
+ * The worker is crashed for real (SIGKILL, no clean shutdown). Temporal gets SIGTERM instead: its
+ * script must stop the server it started, and a SIGKILL would leave that server running alone.
  *
  * @param sup - The supervisor.
  * @param name - The worker or Temporal.
  */
 function toggle(sup: Supervisor, name: 'worker' | 'temporal'): void {
   const child = sup.running.get(name);
-  if (child) {
-    say(`crashing the ${name} (SIGKILL, no clean shutdown)…`);
+  if (child && name === 'worker') {
+    say('crashing the worker (SIGKILL, no clean shutdown)…');
     child.kill('SIGKILL');
+    return;
+  }
+  if (child) {
+    say('stopping Temporal…');
+    child.kill('SIGTERM');
     return;
   }
   say(`starting the ${name}…`);
@@ -229,17 +211,15 @@ async function quit(sup: Supervisor, code = 0): Promise<never> {
   process.exit(code);
 }
 
-/** Asks the Temporal CLI whether the server answers (`SERVING`). */
-async function temporalHealthy(): Promise<boolean> {
+/** Whether a Temporal server already answers at `TEMPORAL_ADDRESS`. */
+async function temporalRunning(): Promise<boolean> {
   try {
-    const { stdout } = await promisify(execFile)('temporal', [
-      'operator',
-      'cluster',
-      'health',
-      '--address',
-      config.temporalAddress,
-    ]);
-    return stdout.includes('SERVING');
+    const connection = await Connection.connect({
+      address: config.temporalAddress,
+      connectTimeout: '1 second',
+    });
+    await connection.close();
+    return true;
   } catch {
     return false;
   }
