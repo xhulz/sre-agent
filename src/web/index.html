@@ -67,7 +67,7 @@
 <header>
   <h1>SRE Agent <span>— one responder, one agent</span></h1>
   <div class="controls">
-    <label class="muted">Responder <input id="who" size="10"></label>
+    <span class="muted">Responder: <strong id="who"></strong></span>
     <select id="scenario"></select>
     <button id="trigger" class="primary">Trigger incident</button>
   </div>
@@ -90,6 +90,12 @@
    * Same conventions as the TypeScript: constants first, `main()` wires everything, functions
    * follow in the order they are used, and the only top-level call is `main()` at the end.
    */
+
+  /**
+   * Who decides, on every decision: the audit trail. One responder in this sketch; with a login it
+   * would be the signed-in user.
+   */
+  const RESPONDER = 'Responder PD';
 
   /** List prices, USD per million tokens, by model (estimate only, shown next to token counts). */
   const PRICES = { 'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2 } };
@@ -116,8 +122,7 @@
 
   /** Wires the controls, loads once, then polls (1.5s), animates (120ms) and refreshes the list (5s). */
   function main() {
-    $('#who').value = who();
-    $('#who').addEventListener('change', (e) => saveWho(e.target.value));
+    $('#who').textContent = RESPONDER;
     $('#trigger').addEventListener('click', onTrigger);
     $('#detail').addEventListener('click', onDetailClick);
     $('#detail').addEventListener('toggle', onEvidenceToggle, true);
@@ -206,7 +211,7 @@
   /** Demo control: someone fixes it by hand while the agent waits. */
   async function manualRollback() {
     const { tenantId, service } = page.state.incident;
-    const r = await api('POST', `/api/world/${tenantId}/manual-rollback`, { service, by: who() });
+    const r = await api('POST', `/api/world/${tenantId}/manual-rollback`, { service, by: RESPONDER });
     page.manualRollbacks.set(page.selected, r.version);
     render();
     return true;
@@ -231,7 +236,7 @@
       if (reason === null) return false;
     }
     const proposalId = page.state.proposal?.id ?? null;
-    await api('POST', `/api/incidents/${encodeURIComponent(page.selected)}/decision`, { proposalId, kind, by: who(), reason });
+    await api('POST', `/api/incidents/${encodeURIComponent(page.selected)}/decision`, { proposalId, kind, by: RESPONDER, reason });
     return true;
   }
 
@@ -459,24 +464,6 @@
     if (!price) return '?';
     const u = s.usage;
     return ((u.inputTokens * price.input + u.outputTokens * price.output + u.cacheReadTokens * price.cacheRead) / 1e6).toFixed(3);
-  }
-
-  /** The responder's name (stored in the browser). It goes with every decision: the audit trail. */
-  function who() {
-    try {
-      return localStorage.getItem('who') || 'responder';
-    } catch {
-      return 'responder';
-    }
-  }
-
-  /** Remembers the responder's name in this browser. */
-  function saveWho(name) {
-    try {
-      localStorage.setItem('who', name);
-    } catch {
-      // Storage blocked (private window): the name is used for this page only.
-    }
   }
 
   main();
